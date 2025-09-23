@@ -1,0 +1,22 @@
+.block
+{
+    $$ Read StackBase and StackLimit from 32-bit TEB
+    r $t0 = poi(@$teb+0x04)
+    r $t1 = poi(@$teb+0x08)
+
+    $$ sanity print
+    .printf "TEB = %p\n", @$teb
+    .printf "StackBase = %p\n", $t0
+    .printf "StackLimit = %p\n", $t1
+
+    $$ ensure StackLimit < StackBase (normally true)
+    .if ($t1 > $t0) { r $tmp = $t0; r $t0 = $t1; r $t1 = $tmp }
+
+    $$ search for bytes DE AD BE EF in stack range [StackLimit, StackBase)
+    .foreach (addr { s -[1]b $t1 $t0 0xDE 0xAD 0xBE 0xEF }) { 
+        .printf "Match at: %p\n", addr 
+        $$ dump 0x100 (256) bytes from the match
+        db addr L100       
+    }
+}
+
