@@ -7,8 +7,22 @@ def str_to_int(string):
     return int(string, 16)
 
 
-def csvs_to_int_list(csvs):
-    return [str_to_int(x) for x in csvs.split(",")]
+def hex_byte(byte_str):
+    """validate user input is a hex representation of an int between 0 and 255 inclusive"""
+    if byte_str == "??":
+        # windbg shows ?? when it can't access a memory region, but we shouldn't stop execution because of it
+        return byte_str
+
+    try:
+        val = int(byte_str, 16)
+        if 0 <= val <= 255:
+            return val
+        else:
+            raise ValueError
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"only *hex* bytes between 00 and ff are valid, found {byte_str}"
+        )
 
 
 class BadCharFinder:
@@ -108,21 +122,22 @@ def main():
         "--start",
         help="first byte in range to search (default: 00)",
         default="00",
-        type=str_to_int,
+        type=hex_byte,
     )
     parser.add_argument(
         "-e",
         "--end",
         help="last byte in range to search (default: ff)",
         default="ff",
-        type=str_to_int,
+        type=hex_byte,
     )
     parser.add_argument(
         "-b",
         "--bad",
-        help="known bad characters (ex: `-b 00,0a,0d`)",
+        help="known bad characters (eg: `-b 00 0a 0d`)",
         default=[],
-        type=csvs_to_int_list,
+        nargs="+",
+        type=hex_byte,
     )
     mutuals = parser.add_mutually_exclusive_group(required=True)
     mutuals.add_argument(
