@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 REG_SEGMENTS = {
     "eax": ["ax", "ah", "al"],
@@ -138,12 +141,17 @@ def make_unique(lines, args):
 
 def parse(results):
     lines = []
-    for result in results:
-        line = {}
-        split_addr = result.split(": ")
-        line["addr"] = split_addr[0]
-        line["text"] = split_addr[1].split(" ;  ")[0].strip()
-        lines.append(line)
+    for idx, result in enumerate(results):
+        try:
+            line = {}
+            result = result.strip()
+            split_addr = result.split(": ")
+            line["addr"] = split_addr[0]
+            line["text"] = split_addr[1].split(" ;  ")[0].strip()
+            lines.append(line)
+        except Exception as e:
+            logging.warning(f"Could not parse line {idx + 1}: {result} - {e}")
+            continue
     return lines
 
 
