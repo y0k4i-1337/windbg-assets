@@ -63,7 +63,7 @@ def run(cmd: str) -> str:
         return ""
 
 
-def analyze_cave(start_addr: str) -> int:
+def analyze_cave(start_addr: str, base_addr: int) -> int:
     """
     Analyzes a memory region to locate a code cave starting from a given address.
 
@@ -95,9 +95,13 @@ def analyze_cave(start_addr: str) -> int:
             end_address = int(output.split()[0], 16)
             break
 
+    # Calculate the offset regarding base address
+    offset = int(start_addr, 16) - base_addr
+    pykd.dprintln(f"|-> Offset: {hex(offset)}")
+
     # Calculate the code cave size using the counter
     code_cave_size = (counter + 1) * 4
-    pykd.dprintln(f"|-> {code_cave_size} bytes")
+    pykd.dprintln(f"|-> Size:   {code_cave_size} bytes")
     return end_address
 
 
@@ -130,7 +134,9 @@ def get_protection(addr: str) -> int:
         return 0
 
 
-def analyze_memory_chunk(output: str, current_address: int) -> int:
+def analyze_memory_chunk(
+    output: str, current_address: int, base_address: int
+) -> int:
     """
     Analyzes a memory chunk for empty executable regions, identifying potential code caves.
 
@@ -159,12 +165,17 @@ def analyze_memory_chunk(output: str, current_address: int) -> int:
                 pykd.dprintln(
                     f"\n[+] 0x{addr} - {PROTECTION_FLAGS.get(protection)} ({hex(protection)})"
                 )
-                current_address = analyze_cave(start_addr=addr)
+                current_address = analyze_cave(
+                    start_addr=addr,
+                    base_addr=base_address,
+                )
 
     return current_address
 
 
-def scan_memory_range(start: int, end: int, current_address: int = 0):
+def scan_memory_range(
+    start: int, end: int, base: int, current_address: int = 0
+):
     """
     Scans a specified memory range to locate code caves, analyzing memory in chunks.
 
@@ -185,11 +196,12 @@ def scan_memory_range(start: int, end: int, current_address: int = 0):
     """
     for address in range(start, end, 0xA):
         if current_address:
-            return scan_memory_range(current_address, end)
+            return scan_memory_range(current_address, end, base)
 
         current_address = analyze_memory_chunk(
             output=run(f"dd {hex(address)} L100"),
             current_address=current_address,
+            base_address=base,
         )
 
     return current_address
@@ -197,7 +209,7 @@ def scan_memory_range(start: int, end: int, current_address: int = 0):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="code_caver",
+        prog="find-code-caves",
         add_help=True,
         description="Code Cave Scanner in loaded modules/binary",
     )
@@ -239,7 +251,7 @@ def main():
         f"[*] Scanning for code caves within address range: {hex(start)} - {hex(end)}"
     )
 
-    scan_memory_range(start, end)
+    scan_memory_range(start, end, start)
 
     pykd.dprintln("\n[+] Done")
 
