@@ -101,7 +101,9 @@ def analyze_cave(start_addr: str, base_addr: int) -> int:
 
     # Calculate the code cave size using the counter
     code_cave_size = (counter + 1) * 4
-    pykd.dprintln(f"|-> Size:   {code_cave_size} bytes")
+    pykd.dprintln(
+        f"|-> Size:   {code_cave_size} ({hex(code_cave_size)}) bytes"
+    )
     return end_address
 
 
