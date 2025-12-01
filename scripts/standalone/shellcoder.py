@@ -557,9 +557,11 @@ def main(args):
 
     final = ""
 
-    final += 'shellcode = b"'
-
-    for enc in encoding:
+    # Print like msfvenom python format
+    final += 'shellcode =  b"'
+    for i, enc in enumerate(encoding):
+        if i % 11 == 0:
+            final += '"\nshellcode += b"'
         final += "\\x{0:02x}".format(enc)
 
     final += '"'
