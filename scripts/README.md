@@ -5,6 +5,7 @@ Mostly copied from:
   - [@epi052/osed-scripts](https://github.com/epi052/osed-scripts)
   - [@sebastian93921/OSED-Code-Snippets](https://github.com/sebastian93921/OSED-Code-Snippets)
   - [@wry4n/osed-scripts](https://github.com/wry4n/osed-scripts)
+  - [@nop-tech/code_caver](https://github.com/nop-tech/code_caver)
 
   ## Table of Contents
 
@@ -19,6 +20,7 @@ Mostly copied from:
     - [find-bad-chars.py](#find-bad-charspy)
     - [search.py](#searchpy)
     - [find-function-iat.py](#find-function-iatpy)
+    - [find-code-caves.py](#find-code-cavespy)
 
 ## Standalone Scripts
 
@@ -421,6 +423,7 @@ optional arguments:
 ```
 
 Example:
+
 ```
 > !py C:\Users\User\Desktop\find-function-iat.py module WriteProcessMemoryStub
 [-] Using KERNEL32!RaiseExceptionStub (couldn't find WriteProcessMemoryStub IAT address)
@@ -429,3 +432,16 @@ Example:
 [+] 0x74f22890 (WriteProcessMemoryStub resolved)
 [+] 0x1b9b0 (offset = WriteProcessMemoryStub - RaiseExceptionStub)
 [+] 0xfffe4650 (negative)
+```
+
+
+## find-code-caves.py
+
+Disclaimer: just a copy from @nop-tech/code_caver.
+
+Search process for code caves in e.g. library files. It will look for empty memory regions and check if the region is either protected with PAGE_EXECUTE_READ (0X20) or PAGE_EXECUTE_READWRITE (0x40).
+
+
+  1. Load Pykd inside WinDbg: .load pykd
+  1. !py C:\find-code-caves.py \<module\>
+  1. Can also run passing address range: !py C:\find-code-caves.py \<start\> \<end\>
