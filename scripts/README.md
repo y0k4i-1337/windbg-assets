@@ -21,6 +21,7 @@ Mostly copied from:
     - [search.py](#searchpy)
     - [find-function-iat.py](#find-function-iatpy)
     - [find-code-caves.py](#find-code-cavespy)
+    - [dump-iat.py](#dump-iatpy)
 
 ## Standalone Scripts
 
@@ -445,3 +446,21 @@ Search process for code caves in e.g. library files. It will look for empty memo
   1. Load Pykd inside WinDbg: .load pykd
   1. !py C:\find-code-caves.py \<module\>
   1. Can also run passing address range: !py C:\find-code-caves.py \<start\> \<end\>
+
+
+## dump-iat.py
+
+Uses pykd to dump IAT from a specified module. Can filter results by desired imported modules.
+
+```
+usage: dump-iat.py [-h] module [dlls [dlls ...]]
+
+Dump Import Address Table (IAT) of a module
+
+positional arguments:
+  module      Module name to dump IAT from
+  dlls        Specific DLLs to display (optional)
+
+optional arguments:
+  -h, --help  show this help message and exit
+```
