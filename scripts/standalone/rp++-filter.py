@@ -52,9 +52,7 @@ class Instruction:
         exact = filters.exact
         for i in range(len(filters.ops)):
             reg = filters.ops[i]
-            if reg and (
-                (i + 1) > num_ops or not self.operands[i].matches(reg, exact)
-            ):
+            if reg and ((i + 1) > num_ops or not self.operands[i].matches(reg, exact)):
                 matches = False
         return matches
 
@@ -93,10 +91,7 @@ class GadgetEngine:
             if len(gadget.instrs) > filters.length:
                 continue
             # instr
-            if (
-                filters.instr != "all"
-                and gadget.instrs[0].instr != filters.instr
-            ):
+            if filters.instr != "all" and gadget.instrs[0].instr != filters.instr:
                 continue
             # last instruction
             if (
@@ -187,9 +182,7 @@ def main():
     parser.add_argument("--op1", help="1st operand (register)")
     parser.add_argument("--op2", help="2nd operand (register)")
     parser.add_argument("--op3", help="3rd operand (register)")
-    parser.add_argument(
-        "-i", "--instr", help="instruction to search for", default="all"
-    )
+    parser.add_argument("-i", "--instr", help="instruction to search for", default="all")
     parser.add_argument(
         "-l",
         "--length",

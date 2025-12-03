@@ -41,9 +41,7 @@ class BadCharFinder:
         self.results = list()
 
     def create_expected(self):
-        self.expected = [
-            i for i in range(self.start, self.end + 1) if i not in self.bad
-        ]
+        self.expected = [i for i in range(self.start, self.end + 1) if i not in self.bad]
 
     def compare(self):
         prev_bad = False
@@ -56,9 +54,7 @@ class BadCharFinder:
                 self.new_bad.append(self.expected[i])
                 prev_bad = True
                 continue
-            print(
-                "[+] Consecutive bad chars (data possibly truncated), aborting..."
-            )
+            print("[+] Consecutive bad chars (data possibly truncated), aborting...")
             break
 
     def find(self):
