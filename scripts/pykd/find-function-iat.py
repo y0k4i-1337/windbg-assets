@@ -54,20 +54,14 @@ class AddrResolver:
     def try_get_func(self):
         va = "KERNEL32!{}".format(self.func)
         if va in self.entries:
-            print(
-                "[+] {} ({} IAT entry)".format(
-                    hex(self.entries[va]["iat"]), self.func
-                )
-            )
+            print("[+] {} ({} IAT entry)".format(hex(self.entries[va]["iat"]), self.func))
             exit(0)
 
     def get_last_entry(self):
         self.alt_entry = list(self.entries.keys())[-1]
 
     def get_resolved(self):
-        self.va_resolved = int(
-            pykd.dbgCommand("x KERNEL32!{}".format(self.func))[:8], 16
-        )
+        self.va_resolved = int(pykd.dbgCommand("x KERNEL32!{}".format(self.func))[:8], 16)
 
     def resolve(self):
 
@@ -88,6 +82,8 @@ def main():
             "VirtualAllocStub",
             "WriteProcessMemoryStub",
             "VirtualProtectStub",
+            "LoadLibraryAStub",
+            "GetProcAddressStub",
         ],
     )
     args = parser.parse_args()
@@ -95,9 +91,7 @@ def main():
     resolver = AddrResolver(args.module, args.func)
     resolver.resolve()
 
-    diff = (
-        resolver.va_resolved - resolver.entries[resolver.alt_entry]["resolved"]
-    )
+    diff = resolver.va_resolved - resolver.entries[resolver.alt_entry]["resolved"]
     neg = (0xFFFFFFFFFFFFFFFF - abs(diff) + 1) & 0xFFFFFFFF
 
     print(
@@ -119,9 +113,7 @@ def main():
     )
     print("[+] {} ({} resolved)".format(hex(resolver.va_resolved), args.func))
     print(
-        "[+] {} (offset = {} - {})".format(
-            hex(diff), args.func, resolver.alt_entry[9:]
-        )
+        "[+] {} (offset = {} - {})".format(hex(diff), args.func, resolver.alt_entry[9:])
     )
     print("[+] {} (negative)".format(hex(neg)))
 

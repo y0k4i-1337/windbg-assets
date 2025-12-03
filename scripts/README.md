@@ -413,14 +413,17 @@ A nice feature:
 * you can specify the module that you'd like to use
 
 ```
-usage: find-function-iat.py [-h] module {VirtualAllocStub,WriteProcessMemoryStub,VirtualProtectStub}
+usage: find-function-iat.py [-h]
+                            module
+                            {VirtualAllocStub,WriteProcessMemoryStub,VirtualProtectStub,LoadLibraryAStub,GetProcAddressStub}
 
 positional arguments:
   module                address to begin search from
-  {VirtualAllocStub,WriteProcessMemoryStub,VirtualProtectStub}
+  {VirtualAllocStub,WriteProcessMemoryStub,VirtualProtectStub,LoadLibraryAStub,GetProcAddressStub}
 
 optional arguments:
   -h, --help            show this help message and exit
+
 ```
 
 Example:
