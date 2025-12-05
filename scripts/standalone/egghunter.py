@@ -5,6 +5,19 @@ import sys
 import keystone as ks
 
 
+class Color:
+    def __init__(self, disabled=False):
+        if disabled:
+            self.red = self.green = self.yellow = self.blue = ""
+            self.reset = ""
+        else:
+            self.red = "\033[31m"
+            self.green = "\033[32m"
+            self.yellow = "\033[33m"
+            self.blue = "\033[34m"
+            self.reset = "\033[0m"
+
+
 def is_valid_tag_count(s):
     return True if len(s) == 4 else False
 
@@ -20,8 +33,12 @@ def tag_to_hex(s):
     return "0x" + "".join(retval[::-1])
 
 
+# To find the current system call number for NtAccessCheckAndAuditAlarm, you can use the following WinDbg command:
+# 0:000> u ntdll!NtAccessCheckAndAuditAlarm
 def ntaccess_hunter(tag):
     asm = f"""
+        push esp
+        pop edx
     loop_inc_page:
         or dx, 0x0fff
     loop_inc_one:
@@ -93,54 +110,119 @@ def seh_hunter(tag):
     return "\n".join(asm)
 
 
-def main(args):
+def print_asm_lines(asm_source, eng, bad_chars, no_color=False):
+    colors = Color(disabled=no_color)
 
-    egghunter = (
-        ntaccess_hunter(args.tag) if not args.seh else seh_hunter(args.tag)
-    )
+    lines = [l for l in asm_source.splitlines() if l.strip()]
 
-    eng = ks.Ks(ks.KS_ARCH_X86, ks.KS_MODE_32)
-    if args.seh:
-        encoding, count = eng.asm(egghunter)
-    else:
-        print("[+] Egghunter assembly code + coresponding bytes")
+    try:
+        # try incremental mode
         asm_blocks = ""
         prev_size = 0
-        for line in egghunter.splitlines():
+        full_encoding = None
+
+        for line in lines:
             asm_blocks += line + "\n"
-            encoding, count = eng.asm(asm_blocks)
-            if encoding:
-                enc_opcode = ""
-                for byte in encoding[prev_size:]:
-                    enc_opcode += "0x{0:02x} ".format(byte)
-                    prev_size += 1
-                spacer = 30 - len(line)
-                print("%s %s %s" % (line, (" " * spacer), enc_opcode))
+            encoding, count = eng.asm(asm_blocks)  # may fail for SEH
+            if not encoding:
+                continue
+            prev_size = len(encoding)
+        full_encoding = encoding  # no error → incremental mode OK
+
+        incremental_ok = True
+
+    except ks.KsError:
+        # SEH case → must assemble full block once
+        incremental_ok = False
+        full_encoding, count = eng.asm(asm_source)
+
+    # Now print per line slices
+    byte_index = 0
+
+    # Determine longest line for formatting
+    max_line_len = max(len(line) for line in lines)
+    col1_width = max_line_len + 6
+    print(
+        f"{colors.blue}{'[+] Egghunter assembly code'.ljust(col1_width)}Corresponding bytes{colors.reset}"
+    )
+    for line in lines:
+        enc_opcode = ""
+
+        # Assemble this single line to get its size
+        # (Keystone supports isolated-line assembly even for labels)
+        try:
+            line_enc, _ = eng.asm(line)
+            line_size = len(line_enc)
+        except ks.KsError:
+            # labels alone (e.g. "start:") assemble to nothing
+            line_size = 0
+
+        # Slice bytes
+        current = full_encoding[byte_index : byte_index + line_size]
+        byte_index += line_size
+
+        # Color bad bytes
+        for b in current:
+            hb = f"{b:02x}"
+            if hb in bad_chars:
+                enc_opcode += f"{colors.red}0x{hb}{colors.reset} "
+            else:
+                enc_opcode += f"0x{hb} "
+
+        spacer = 30 - len(line)
+        print(f"{line.ljust(col1_width)}{enc_opcode}")
+
+    # Convert bad chars to integer values
+    badvals = {int(x.replace("\\x", ""), 16) for x in bad_chars}
+
+    # Find where bad chars appear
+    bad_positions = {}
+    for idx, b in enumerate(full_encoding):
+        if b in badvals:
+            bad_positions.setdefault(b, []).append(idx)
+
+    return full_encoding, count, bad_positions
+
+
+def main(args):
+    colors = Color(disabled=args.no_color)
+
+    egghunter = ntaccess_hunter(args.tag) if not args.seh else seh_hunter(args.tag)
+
+    eng = ks.Ks(ks.KS_ARCH_X86, ks.KS_MODE_32)
+
+    encoding, count, bad_positions = print_asm_lines(
+        egghunter, eng, args.bad_chars, no_color=args.no_color
+    )
 
     final = ""
-    final += 'egghunter = b"'
+    final += 'egghunter =  b"'
 
-    for enc in encoding:
+    for i, enc in enumerate(encoding):
+        if i % 11 == 0:
+            final += '"\negghunter += b"'
         final += "\\x{0:02x}".format(enc)
 
     final += '"'
 
-    sentry = False
-
-    for bad in args.bad_chars:
-        if bad in final:
-            print(f"[!] Found 0x{bad}")
-            sentry = True
-
-    if sentry:
-        print(f"[=] {final[14:-1]}", file=sys.stderr)
-        raise SystemExit("[!] Remove bad characters and try again")
-
-    print(f"[+] egghunter created!")
+    print()
+    print(f"{colors.green}[+] egghunter created!{colors.reset}")
     print(f"[=]   len: {len(encoding)} bytes")
     print(f"[=]   tag: {args.tag * 2}")
     print(f"[=]   ver: {['NtAccessCheckAndAuditAlarm', 'SEH'][args.seh]}\n")
     print(final)
+
+    if len(bad_positions) > 0:
+        print()
+        print(f"{colors.red}[!] Bad characters found in egghunter!{colors.reset}")
+        print(f"{'Bad Char':<10}{'Positions':<25}")
+        for b in sorted(bad_positions.keys()):
+            positions = ", ".join(str(p) for p in bad_positions[b])
+            print(f"{colors.red}0x{b:02x}{colors.reset}      {positions}")
+        print()
+        raise SystemExit(
+            f"{colors.red}[!] Remove bad characters and try again{colors.reset}"
+        )
 
 
 if __name__ == "__main__":
@@ -166,6 +248,9 @@ if __name__ == "__main__":
         "--seh",
         help="create an seh based egghunter instead of NtAccessCheckAndAuditAlarm",
         action="store_true",
+    )
+    parser.add_argument(
+        "--no-color", action="store_true", help="Disable ANSI color output"
     )
 
     args = parser.parse_args()
